@@ -1,0 +1,2 @@
+# DoclingEasyOCR
+Docling + EasyOCR

@@ -9,6 +9,9 @@ services:
       DOCUMENTS_DIR: /app/data/documents
       HF_HOME: /root/.cache/huggingface
       DOCLING_EASYOCR_LANGS: en
+      DOCLING_EASYOCR_FORCE_FULL_PAGE: "true"
+      DOCLING_EASYOCR_CONFIDENCE_THRESHOLD: "0.25"
+      DOCLING_IMAGES_SCALE: "2.0"
       DOCLING_NUM_THREADS: 4
       DOCLING_DEVICE: auto
     volumes:

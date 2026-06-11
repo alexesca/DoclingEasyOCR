@@ -38,6 +38,9 @@ If you also run the Granite VLM viewer from `/home/miguel/git/DoclingViewer`, yo
 - This implementation currently accepts PDF uploads only, because the frontend viewer is intentionally centered on PDF page rendering plus layout overlays.
 - Conversion is synchronous for now. Large PDFs will take noticeable time while the request is processed.
 - The default OCR language is `en`. Override it with `DOCLING_EASYOCR_LANGS=en,es` in `docker-compose.yml` if you need broader language coverage.
+- Full-page OCR is enabled by default so scanned pages are processed even when Docling's bitmap-selection heuristic does not select them. Set `DOCLING_EASYOCR_FORCE_FULL_PAGE=false` to restore selective OCR.
+- OCR uses a 2x page render and a `0.25` confidence threshold by default to retain small print and footnotes. These are configurable with `DOCLING_IMAGES_SCALE` and `DOCLING_EASYOCR_CONFIDENCE_THRESHOLD`.
+- Viewer overlays come from Docling's assembled page elements, including page headers. Markdown still comes from the final `DoclingDocument` and can differ when Docling merges regions or chooses an incorrect reading order.
 
 ## Backend model configuration
 
@@ -45,8 +48,13 @@ The backend uses Docling's standard PDF pipeline with an explicit Heron layout m
 
 ```python
 pipeline_options = PdfPipelineOptions(
+    images_scale=2.0,
     do_ocr=True,
-    ocr_options=EasyOcrOptions(lang=["en"]),
+    ocr_options=EasyOcrOptions(
+        lang=["en"],
+        force_full_page_ocr=True,
+        confidence_threshold=0.25,
+    ),
     do_table_structure=True,
     table_structure_options=TableStructureOptions(do_cell_matching=True),
     layout_options=LayoutOptions(model_spec=DOCLING_LAYOUT_HERON),

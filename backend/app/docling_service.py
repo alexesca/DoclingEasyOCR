@@ -30,25 +30,18 @@ PIPELINE_METADATA = {
 }
 
 
-def _extract_item_text(item: Any, document: Any) -> str:
-    text = getattr(item, "text", None)
+def _extract_assembled_text(element: Any) -> str:
+    text = getattr(element, "text", None)
     if isinstance(text, str) and text.strip():
         return text.strip()
 
-    caption_text = getattr(item, "caption_text", None)
-    if callable(caption_text):
-        try:
-            value = caption_text(document)
-        except Exception:
-            value = None
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-
-    name = getattr(item, "name", None)
-    if isinstance(name, str) and name.strip():
-        return name.strip()
-
-    return ""
+    cluster = getattr(element, "cluster", None)
+    cells = getattr(cluster, "cells", None) or []
+    return " ".join(
+        cell.text.strip()
+        for cell in cells
+        if isinstance(getattr(cell, "text", None), str) and cell.text.strip()
+    )
 
 
 def _read_bool_env(name: str) -> bool | None:
@@ -64,6 +57,11 @@ def _read_bool_env(name: str) -> bool | None:
     raise ValueError(f"Invalid boolean value for {name}: {value}")
 
 
+def _read_bool_env_default(name: str, default: bool) -> bool:
+    value = _read_bool_env(name)
+    return default if value is None else value
+
+
 def _read_ocr_languages() -> list[str]:
     raw_value = os.getenv("DOCLING_EASYOCR_LANGS", "en")
     languages = [value.strip() for value in raw_value.split(",") if value.strip()]
@@ -77,9 +75,17 @@ def get_converter() -> DocumentConverter:
             num_threads=int(os.getenv("DOCLING_NUM_THREADS", "4")),
             device=os.getenv("DOCLING_DEVICE", "auto"),
         ),
+        images_scale=float(os.getenv("DOCLING_IMAGES_SCALE", "2.0")),
         do_ocr=True,
         ocr_options=EasyOcrOptions(
             lang=_read_ocr_languages(),
+            force_full_page_ocr=_read_bool_env_default(
+                "DOCLING_EASYOCR_FORCE_FULL_PAGE",
+                True,
+            ),
+            confidence_threshold=float(
+                os.getenv("DOCLING_EASYOCR_CONFIDENCE_THRESHOLD", "0.25")
+            ),
             use_gpu=_read_bool_env("DOCLING_EASYOCR_USE_GPU"),
             recog_network=os.getenv("DOCLING_EASYOCR_RECOG_NETWORK", "standard"),
         ),
@@ -118,29 +124,29 @@ def convert_pdf(source_path: Path) -> dict[str, Any]:
     label_counts: Counter[str] = Counter()
     total_items = 0
 
-    for item, level in document.iterate_items():
-        label = getattr(item, "label", None)
-        if label is None:
+    for result_page in result.pages:
+        page = pages.get(result_page.page_no)
+        assembled = getattr(result_page, "assembled", None)
+        elements = getattr(assembled, "elements", None) or []
+        if page is None:
             continue
 
-        label_value = getattr(label, "value", str(label))
-        item_text = _extract_item_text(item, document)
-        prov_items = getattr(item, "prov", None) or []
-
-        for prov_index, prov in enumerate(prov_items):
-            page = pages.get(prov.page_no)
-            if page is None:
+        for element_index, element in enumerate(elements):
+            label = getattr(element, "label", None)
+            cluster = getattr(element, "cluster", None)
+            bbox = getattr(cluster, "bbox", None)
+            if label is None or bbox is None:
                 continue
 
-            bbox = prov.bbox.to_top_left_origin(page["height"])
             left, top, right, bottom = bbox.as_tuple()
+            label_value = getattr(label, "value", str(label))
 
             page["items"].append(
                 {
-                    "id": f"{item.self_ref}:{prov_index}",
+                    "id": f"page-{result_page.page_no}-element-{element_index}",
                     "label": label_value,
-                    "level": level,
-                    "text": item_text,
+                    "level": 1,
+                    "text": _extract_assembled_text(element),
                     "bbox": {
                         "left": left,
                         "top": top,
